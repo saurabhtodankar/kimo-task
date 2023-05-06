@@ -1,0 +1,48 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Authenticate to GCP
+      uses: google-github-actions/setup-gcloud@v0.2.0
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: project-id
+        zone: cluster-zone
+        cluster_name: cluster-name
+
+    - name: Build and push Docker images
+      env:
+        REGISTRY: gcr.io/DevOps-task
+      run: |
+        docker build -t $REGISTRY/product-catalogue:${{ github.sha }} ./productcatalogue
+        docker build -t $REGISTRY/shopfront:${{ github.sha }} ./shopfront
+        docker build -t $REGISTRY/stock-manager:${{ github.sha }} ./stockmanager
+        docker push $REGISTRY/product-catalogue:${{ github.sha }}
+        docker push $REGISTRY/shopfront:${{ github.sha }}
+        docker push $REGISTRY/stock-manager:${{ github.sha }}
+
+    - name: Deploy to Kubernetes
+      env:
+        REGISTRY: gcr.io/DevOps-task
+      run: |
+        helm upgrade --install product-catalogue ./productcatalogue \
+          --set image.repository=$REGISTRY/product-catalogue \
+          --set image.tag=${{ github.sha }}
+        helm upgrade --install shopfront ./shopfront \
+          --set image.repository=$REGISTRY/shopfront \
+          --set image.tag=${{ github.sha }}
+        helm upgrade --install stock-manager ./stockmanager \
+          --set image.repository=$REGISTRY/stock-manager \
+          --set image.tag=${{ github.sha }}
+
